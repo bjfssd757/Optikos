@@ -77,7 +77,7 @@ void GLFWWindow::setWindowTitleBar(Color color)
 
 #else
     // linux
-
+    (void)color;
 #endif
 }
 
