@@ -2,6 +2,7 @@
 #define TEXTFONT_H
 
 #include <ft2build.h>
+#include <cmath>
 
 #include "ui/IWidget.hpp"
 #include "utilities/logger.hpp"
