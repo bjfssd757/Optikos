@@ -12,8 +12,17 @@ Slider::Slider(uint32_t width, uint32_t height, Vec2 position, OptikosType type,
       m_dimmed(m_color),
       m_originalColor(m_color)
 {
-    if (m_min > m_max)
-        LOG_WARN("Slider was created with values m_min > m_max.", "log"); 
+    bool isInvalid = false;
+    if (m_type == OPTIKOS_INT)
+    {
+        isInvalid = (*(const int*) m_min > *(const int*) m_max);
+    }
+    else if (m_type == OPTIKOS_FLOAT)
+    {
+        isInvalid = (*(const float*) m_min > *(const float*) m_max);
+    }
+
+    if (isInvalid) LOG_WARN("Slider was created with values m_min > m_max.", "log");
 
     setHoverDimming(0.5);
 
