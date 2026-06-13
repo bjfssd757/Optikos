@@ -60,9 +60,20 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-set(OPTIKOS_RENDERER "OPENGL" CACHE STRING "" FORCE)
+# set(OPTIKOS_RENDERER "OPENGL" CACHE STRING "" FORCE)
+set(OPTIKOS_RENDERER "VULKAN" CACHE STRING "" FORCE)
+
 set(OPTIKOS_PLATFORM "GLFW"   CACHE STRING "" FORCE)
 set(OPTIKOS_INPUT    "GLFW"   CACHE STRING "" FORCE)
+
+find_package(glfw3 CONFIG REQUIRED)
+
+if(OPTIKOS_RENDERER STREQUAL "VULKAN")
+    find_package(Vulkan REQUIRED MODULE)
+    find_package(unofficial-shaderc CONFIG REQUIRED)
+else()
+    find_package(glad CONFIG REQUIRED)
+endif()
 
 include(FetchContent)
 FetchContent_Declare(
@@ -72,20 +83,34 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(Optikos)
 
-find_package(glfw3 CONFIG REQUIRED)
-find_package(glad  CONFIG REQUIRED)
-
 add_executable(TestApp main.cpp)
 
 target_link_libraries(TestApp PRIVATE 
     Optikos::Optikos
     glfw
-    glad::glad
 )
+
+if(OPTIKOS_RENDERER STREQUAL "VULKAN")
+    target_link_libraries(TestApp PRIVATE 
+        Vulkan::Vulkan
+        unofficial::shaderc::shaderc
+    )
+else()
+    target_link_libraries(TestApp PRIVATE 
+        glad::glad
+    )
+endif()
 
 target_compile_definitions(TestApp PRIVATE
     OPTIKOS_RES_DIR="${optikos_SOURCE_DIR}/res/"
 )
+
+option(ENABLE_GPU_PROFILING "Enable GPU profiling" OFF)
+if(ENABLE_GPU_PROFILING)
+    target_compile_definitions(TestApp PRIVATE ENABLE_GPU_PROFILING)
+    target_compile_definitions(Optikos PRIVATE ENABLE_GPU_PROFILING)
+    message(STATUS "GPU Profiling: ON")
+endif()
 
 optikos_copy_resources(TestApp)
 ```
@@ -106,4 +131,13 @@ With GPU profiling:
 
 ```powershell
 cmake --preset windows-msvc -D ENABLE_GPU_PROFILING=ON && cmake --build build && .\build\Debug\Optikos.exe
+```
+
+```powershell
+rmdir /s /q build
+
+
+ -DENABLE_GPU_PROFILING=ON
+cmake --build build
+.\build\Debug\TestApp.exe
 ```
