@@ -19,6 +19,10 @@ namespace Optikos
 {
 int constexpr DEFAULT_SHADER = 0;
 
+constexpr const char* APP_NAME = "Optikos";
+constexpr const char* ENGINE_NAME = "No Engine";
+
+
 class VulkanRenderer : public IRenderer
 {
    public:

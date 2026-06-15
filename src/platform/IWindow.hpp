@@ -38,16 +38,18 @@ struct Window
 class IWindow
 {
    public:
-    virtual ~IWindow()                                                         = default;
-    virtual void                     setWindowShouldClose(bool flag)           = 0;
-    virtual void                     setWindowTitleBar(Color color)            = 0;
-    virtual void                     makeContextCurrent()                      = 0;
-    virtual void                     setRenderer(IRenderer* renderer)          = 0;
-    virtual void                     setInputSystem(IInputSystem* inputSystem) = 0;
-    virtual IInputSystem*            getInputSystem() const                    = 0;
-    virtual void                     setUiSystem(UISystem* uiSystem)           = 0;
-    virtual UISystem*                getUiSystem() const                       = 0;
-    virtual std::vector<const char*> getVulkanExtensions()                     = 0;
+    virtual ~IWindow()                                              = default;
+    virtual void          setWindowShouldClose(bool flag)           = 0;
+    virtual void          setWindowTitleBar(Color color)            = 0;
+    virtual void          makeContextCurrent()                      = 0;
+    virtual void          setRenderer(IRenderer* renderer)          = 0;
+    virtual void          setInputSystem(IInputSystem* inputSystem) = 0;
+    virtual IInputSystem* getInputSystem() const                    = 0;
+    virtual void          setUiSystem(UISystem* uiSystem)           = 0;
+    virtual UISystem*     getUiSystem() const                       = 0;
+
+    /* used only for vulkan */
+    virtual std::vector<const char*> getVulkanExtensions() = 0;
 
     virtual void* native_handle()      = 0;
     virtual void  poll_events()        = 0;
