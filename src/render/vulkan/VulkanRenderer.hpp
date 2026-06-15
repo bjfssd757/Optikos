@@ -1,8 +1,13 @@
 #ifndef VULKANRENDERER_H
 #define VULKANRENDERER_H
 
+#include <vulkan/vulkan.h>
+
 #include <iostream>
-#include <vulkan/vulkan.hpp>
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 #include "platform/IWindow.hpp"
 #include "render/IRenderer.hpp"
@@ -39,8 +44,8 @@ class VulkanRenderer : public IRenderer
     std::unique_ptr<IShader> m_shader;
     RenderQueue              m_renderQueue;
 
-    VkInstance               m_instance;
-    VkResult                 m_result;
+    VkInstance               m_instance       = VK_NULL_HANDLE;
+    VkDebugUtilsMessengerEXT m_debugMessenger = VK_NULL_HANDLE;
 
     std::unordered_map<std::string, unsigned int> m_shaderCache;
     unsigned int                                  m_defaultShader = DEFAULT_SHADER;
@@ -48,6 +53,21 @@ class VulkanRenderer : public IRenderer
     std::unordered_map<std::string, unsigned int> m_textureCache;
 
     bool m_uiStateSet = false;
+
+    static VKAPI_ATTR VkBool32 VKAPI_CALL
+    debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT      messageSeverity,
+                  VkDebugUtilsMessageTypeFlagsEXT             messageType,
+                  const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData);
+
+    VkResult CreateDebugUtilsMessengerEXT(VkInstance                                instance,
+                                          const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo,
+                                          const VkAllocationCallbacks*              pAllocator,
+                                          VkDebugUtilsMessengerEXT* pDebugMessenger);
+
+    void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debugMessenger,
+                                       const VkAllocationCallbacks* pAllocator);
+
+    void populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& createInfo);
 };
 
 }  // namespace Optikos
