@@ -9,6 +9,10 @@
 #include "ui/UISystem.hpp"
 #include "utilities/color.hpp"
 
+#ifdef OPTIKOS_BACKEND_VULKAN
+#include <vulkan/vulkan.h>
+#endif
+
 namespace Optikos
 {
 class IRenderer;
@@ -50,6 +54,15 @@ class IWindow
 
     /* used only for vulkan */
     virtual std::vector<const char*> getVulkanExtensions() = 0;
+#ifdef OPTIKOS_BACKEND_VULKAN
+    virtual void createVulkanSurface(VkInstance instance, VkSurfaceKHR* surface) = 0;
+#else
+    [[deprecated("Vulkan is not supported on this platform")]]
+    virtual void createVulkanSurface(void* instance, void* surface)
+    {
+        // This is a blank fallback so the compiler stays happy
+    }
+#endif
 
     virtual void* native_handle()      = 0;
     virtual void  poll_events()        = 0;

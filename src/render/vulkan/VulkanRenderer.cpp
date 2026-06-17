@@ -6,6 +6,23 @@ namespace Optikos
 VulkanRenderer::VulkanRenderer(IWindow* window, std::unique_ptr<IShader> shader)
     : m_window(window), m_shader(std::move(shader))
 {
+    createInstance();
+    setupDebugMessenger();
+    createSurface();
+    pickPhysicalDevice();
+    createLogicalDevice();
+}
+
+VulkanRenderer::~VulkanRenderer()
+{
+    if (m_device) vkDestroyDevice(m_device, nullptr);
+    if (m_surface) vkDestroySurfaceKHR(m_instance, m_surface, nullptr);
+    if (m_debugMessenger) DestroyDebugUtilsMessengerEXT(m_instance, m_debugMessenger, nullptr);
+    if (m_instance) vkDestroyInstance(m_instance, nullptr);
+}
+
+void VulkanRenderer::createInstance()
+{
     VkApplicationInfo appInfo{};
     appInfo.sType              = VK_STRUCTURE_TYPE_APPLICATION_INFO;
     appInfo.pApplicationName   = APP_NAME;
@@ -16,37 +33,26 @@ VulkanRenderer::VulkanRenderer(IWindow* window, std::unique_ptr<IShader> shader)
 
     LOG_INFO("Vulkan version: " + std::to_string(VK_API_VERSION_1_3), "log");
 
-    auto extensions = m_window->getVulkanExtensions();
+    auto extensions = getRequiredExtensions();
 
     VkInstanceCreateInfo createInfo{};
     createInfo.sType            = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
     createInfo.pApplicationInfo = &appInfo;
+    createInfo.enabledExtensionCount   = static_cast<uint32_t>(extensions.size());
+    createInfo.ppEnabledExtensionNames = extensions.data();
 
 #ifdef __APPLE__
     createInfo.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
-    extensions.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
-    extensions.push_back(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
 #endif
-
-#ifdef ENABLE_VULKAN_DEBUG_LAYER
-    extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
-#endif
-
-    createInfo.enabledExtensionCount   = static_cast<uint32_t>(extensions.size());
-    createInfo.ppEnabledExtensionNames = extensions.data();
-    createInfo.enabledLayerCount       = 0;
 
     uint32_t layerCount = 0;
     vkEnumerateInstanceLayerProperties(&layerCount, nullptr);
-
     std::vector<VkLayerProperties> availableLayers(layerCount);
     vkEnumerateInstanceLayerProperties(&layerCount, availableLayers.data());
 
     LOG_INFO("Available Vulkan layers on this system:", "log");
     for (const auto& layer : availableLayers) LOG_INFO(layer.layerName, "log");
     LOG_INFO("END", "log");
-
-    createInfo.enabledLayerCount = 0;
 
     VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo{};
 
@@ -59,34 +65,20 @@ VulkanRenderer::VulkanRenderer(IWindow* window, std::unique_ptr<IShader> shader)
     populateDebugMessengerCreateInfo(debugCreateInfo);
     createInfo.pNext = &debugCreateInfo;
 #else
+    createInfo.enabledLayerCount   = 0;
     LOG_INFO("[VulkanRenderer] Validation layer DISABLED", "log");
     createInfo.pNext = nullptr;
 #endif
 
     VkResult result = vkCreateInstance(&createInfo, nullptr, &m_instance);
-
     if (result != VK_SUCCESS)
     {
-        LOG_ERROR(
-            "[VulkanRenderer] vkCreateInstance failed! Result code: " + std::to_string(result),
-            "log");
+        LOG_ERROR("[VulkanRenderer] vkCreateInstance failed! Result code: " + std::to_string(result), "log");
         throw std::runtime_error("Failed to create Vulkan instance");
     }
 
-#ifdef ENABLE_VULKAN_DEBUG_LAYER
-    if (CreateDebugUtilsMessengerEXT(m_instance, &debugCreateInfo, nullptr, &m_debugMessenger) !=
-        VK_SUCCESS)
-    {
-        LOG_ERROR(
-            "[VulkanRenderer] CreateDebugUtilsMessengerEXT failed! Result code: " + std::to_string(result),
-            "log");
-        throw std::runtime_error("failed to set up debug messenger!");
-    }
-#endif
-
     uint32_t extensionCount = 0;
     vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, nullptr);
-
     std::vector<VkExtensionProperties> availableExtensions(extensionCount);
     vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, availableExtensions.data());
 
@@ -95,10 +87,181 @@ VulkanRenderer::VulkanRenderer(IWindow* window, std::unique_ptr<IShader> shader)
     LOG_INFO("END", "log");
 }
 
-VulkanRenderer::~VulkanRenderer()
+void VulkanRenderer::setupDebugMessenger()
 {
-    if (m_debugMessenger) DestroyDebugUtilsMessengerEXT(m_instance, m_debugMessenger, nullptr);
-    if (m_instance) vkDestroyInstance(m_instance, nullptr);
+#ifdef ENABLE_VULKAN_DEBUG_LAYER
+    VkDebugUtilsMessengerCreateInfoEXT createInfo{};
+    populateDebugMessengerCreateInfo(createInfo);
+
+    if (CreateDebugUtilsMessengerEXT(m_instance, &createInfo, nullptr, &m_debugMessenger) != VK_SUCCESS)
+    {
+        LOG_ERROR("[VulkanRenderer] CreateDebugUtilsMessengerEXT failed!", "log");
+        throw std::runtime_error("failed to set up debug messenger!");
+    }
+#endif
+}
+
+void VulkanRenderer::createSurface()
+{
+    m_window->createVulkanSurface(m_instance, &m_surface);
+}
+
+bool VulkanRenderer::isDeviceSuitable(const PhysicalDevice& device)
+{
+    QueueFamilyIndices indices = findQueueFamilies(device.m_physDevice);
+    bool swapChainAdequate = !device.m_surfaceFormats.empty() && !device.m_presentModes.empty();
+    return indices.isComplete() && swapChainAdequate;
+}
+
+void VulkanRenderer::pickPhysicalDevice()
+{
+    uint32_t deviceCount = 0;
+    vkEnumeratePhysicalDevices(m_instance, &deviceCount, nullptr);
+    if (deviceCount == 0)
+    {
+        LOG_ERROR("Failed to find GPUs with Vulkan support!", "log");
+        throw std::runtime_error("failed to find GPUs with Vulkan support!");
+    }
+
+    std::vector<VkPhysicalDevice> rawDevices(deviceCount);
+    vkEnumeratePhysicalDevices(m_instance, &deviceCount, rawDevices.data());
+
+    for (const auto& rawDevice : rawDevices)
+    {
+        PhysicalDevice device;
+        device.m_physDevice = rawDevice;
+        populateDeviceDetails(device);
+        m_devices.push_back(device);
+    }
+
+#ifdef ENABLE_VULKAN_DEBUG_LAYER
+    LOG_INFO("=== DETAILED GPU REPORT ===", "log");
+    for (const auto& device : m_devices)
+    {
+        printDeviceDetails(device);
+    }
+    LOG_INFO("===========================", "log");
+#endif
+
+    LOG_INFO("Detected GPUs on this system:", "log");
+    for (size_t i = 0; i < m_devices.size(); i++)
+    {
+        const auto& dev = m_devices[i];
+
+        std::string apiVersionStr =
+            std::to_string(VK_API_VERSION_MAJOR(dev.m_devProps.apiVersion)) + "." +
+            std::to_string(VK_API_VERSION_MINOR(dev.m_devProps.apiVersion)) + "." +
+            std::to_string(VK_API_VERSION_PATCH(dev.m_devProps.apiVersion));
+
+        std::string deviceTypeStr = "Unknown GPU";
+        if (dev.m_devProps.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
+            deviceTypeStr = "Discrete GPU";
+        else if (dev.m_devProps.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU)
+            deviceTypeStr = "Integrated GPU";
+        else if (dev.m_devProps.deviceType == VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU)
+            deviceTypeStr = "Virtual GPU";
+        else if (dev.m_devProps.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU)
+            deviceTypeStr = "CPU";
+
+        LOG_INFO(" [" + std::to_string(i) + "] - Name: " + std::string(dev.m_devProps.deviceName) +
+                 " [" + deviceTypeStr + "], Supported Vulkan API: " + apiVersionStr, "log");
+
+        if (m_selectedDeviceIndex == -1)
+        {
+            bool isDiscrete = (dev.m_devProps.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU);
+            if (isDiscrete && isDeviceSuitable(dev))
+            {
+                m_selectedDeviceIndex = static_cast<int>(i);
+                LOG_INFO("   ^-- [Selected as Primary Device]", "log");
+            }
+        }
+    }
+
+    if (m_selectedDeviceIndex == -1)
+    {
+        for (size_t i = 0; i < m_devices.size(); i++)
+        {
+            if (isDeviceSuitable(m_devices[i]))
+            {
+                m_selectedDeviceIndex = static_cast<int>(i);
+                LOG_INFO("   ^-- [Discrete GPU not found. Selected Fallback Device: " + std::to_string(i) + "]", "log");
+                break;
+            }
+        }
+    }
+
+    if (m_selectedDeviceIndex == -1)
+    {
+        LOG_ERROR("failed to find a suitable GPU!", "log");
+        throw std::runtime_error("failed to find a suitable GPU!");
+    }
+}
+
+void VulkanRenderer::createLogicalDevice()
+{
+    const auto&        selectedDevice = Selected();
+    QueueFamilyIndices indices        = findQueueFamilies(selectedDevice.m_physDevice);
+
+    std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
+    std::set<uint32_t>                   uniqueQueueFamilies = {indices.graphicsFamily.value(),
+                                                                indices.presentFamily.value()};
+
+    float queuePriority = 1.0f;
+    for (uint32_t queueFamily : uniqueQueueFamilies)
+    {
+        VkDeviceQueueCreateInfo queueCreateInfo{};
+        queueCreateInfo.sType            = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+        queueCreateInfo.queueFamilyIndex = queueFamily;
+        queueCreateInfo.queueCount       = 1;
+        queueCreateInfo.pQueuePriorities = &queuePriority;
+        queueCreateInfos.push_back(queueCreateInfo);
+    }
+
+    VkPhysicalDeviceFeatures deviceFeatures{};
+
+    VkDeviceCreateInfo deviceCreateInfo{};
+    deviceCreateInfo.sType                = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+    deviceCreateInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());
+    deviceCreateInfo.pQueueCreateInfos    = queueCreateInfos.data();
+    deviceCreateInfo.pEnabledFeatures     = &deviceFeatures;
+
+    std::vector<const char*> deviceExtensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+
+#ifdef __APPLE__
+    deviceExtensions.push_back("VK_KHR_portability_subset");
+#endif
+
+    deviceCreateInfo.enabledExtensionCount   = static_cast<uint32_t>(deviceExtensions.size());
+    deviceCreateInfo.ppEnabledExtensionNames = deviceExtensions.data();
+    deviceCreateInfo.enabledLayerCount       = 0;
+
+    VkResult deviceResult = vkCreateDevice(selectedDevice.m_physDevice, &deviceCreateInfo, nullptr, &m_device);
+    if (deviceResult != VK_SUCCESS)
+    {
+        LOG_ERROR("[VulkanRenderer] vkCreateDevice failed!", "log");
+        throw std::runtime_error("failed to create logical device!");
+    }
+
+    LOG_INFO("[VulkanRenderer] Logical Device successfully created.", "log");
+
+    vkGetDeviceQueue(m_device, indices.graphicsFamily.value(), 0, &m_graphicsQueue);
+    vkGetDeviceQueue(m_device, indices.presentFamily.value(), 0, &m_presentQueue);
+}
+
+std::vector<const char*> VulkanRenderer::getRequiredExtensions()
+{
+    auto extensions = m_window->getVulkanExtensions();
+
+#ifdef __APPLE__
+    extensions.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
+    extensions.push_back(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
+#endif
+
+#ifdef ENABLE_VULKAN_DEBUG_LAYER
+    extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+#endif
+
+    return extensions;
 }
 
 void VulkanRenderer::onWindowResize(int width, int height)
@@ -107,29 +270,13 @@ void VulkanRenderer::onWindowResize(int width, int height)
     (void) height;
 }
 
-void VulkanRenderer::beginFrame()
-{
-}
+void VulkanRenderer::beginFrame() {}
+void VulkanRenderer::endFrame() {}
+void VulkanRenderer::submit(const DrawCommand&& command) { (void) command; }
+void VulkanRenderer::flush() {}
+void VulkanRenderer::swap_buffer() {}
 
-void VulkanRenderer::endFrame()
-{
-}
-
-void VulkanRenderer::submit(const DrawCommand&& command)
-{
-    (void) command;
-}
-
-void VulkanRenderer::flush()
-{
-}
-
-void VulkanRenderer::swap_buffer()
-{
-}
-
-unsigned int VulkanRenderer::loadTexture(const std::vector<unsigned char>& data, int width,
-                                         int height)
+unsigned int VulkanRenderer::loadTexture(const std::vector<unsigned char>& data, int width, int height)
 {
     (void) data;
     (void) width;
@@ -137,13 +284,8 @@ unsigned int VulkanRenderer::loadTexture(const std::vector<unsigned char>& data,
     return 0;
 }
 
-void VulkanRenderer::resetToDefault()
-{
-}
-
-void VulkanRenderer::restoreStates()
-{
-}
+void VulkanRenderer::resetToDefault() {}
+void VulkanRenderer::restoreStates() {}
 
 IRenderQueue& VulkanRenderer::getRenderQueue()
 {
@@ -177,14 +319,8 @@ VkResult VulkanRenderer::CreateDebugUtilsMessengerEXT(
 {
     auto func = (PFN_vkCreateDebugUtilsMessengerEXT) vkGetInstanceProcAddr(
         instance, "vkCreateDebugUtilsMessengerEXT");
-    if (func != nullptr)
-    {
-        return func(instance, pCreateInfo, pAllocator, pDebugMessenger);
-    }
-    else
-    {
-        return VK_ERROR_EXTENSION_NOT_PRESENT;
-    }
+    if (func != nullptr) return func(instance, pCreateInfo, pAllocator, pDebugMessenger);
+    return VK_ERROR_EXTENSION_NOT_PRESENT;
 }
 
 void VulkanRenderer::DestroyDebugUtilsMessengerEXT(VkInstance                   instance,
@@ -193,19 +329,161 @@ void VulkanRenderer::DestroyDebugUtilsMessengerEXT(VkInstance                   
 {
     auto func = (PFN_vkDestroyDebugUtilsMessengerEXT) vkGetInstanceProcAddr(
         instance, "vkDestroyDebugUtilsMessengerEXT");
-    if (func != nullptr)
-    {
-        func(instance, debugMessenger, pAllocator);
-    }
+    if (func != nullptr) func(instance, debugMessenger, pAllocator);
 }
 
-void VulkanRenderer::populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& createInfo) {
-    createInfo = {};
-    createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
-    createInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
-    createInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+void VulkanRenderer::populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& createInfo)
+{
+    createInfo                 = {};
+    createInfo.sType           = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+    createInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
+                                 VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
+                                 VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+    createInfo.messageType     = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
+                                 VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
+                                 VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
     createInfo.pfnUserCallback = debugCallback;
-    createInfo.pUserData = nullptr;
+    createInfo.pUserData       = nullptr;
+}
+
+bool VulkanRenderer::populateDeviceDetails(PhysicalDevice& device)
+{
+    vkGetPhysicalDeviceProperties(device.m_physDevice, &device.m_devProps);
+
+    uint32_t queueFamilyCount = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(device.m_physDevice, &queueFamilyCount, nullptr);
+    device.m_qFamilyProps.resize(queueFamilyCount);
+    vkGetPhysicalDeviceQueueFamilyProperties(device.m_physDevice, &queueFamilyCount,
+                                             device.m_qFamilyProps.data());
+
+    device.m_qSupportsPresent.resize(queueFamilyCount);
+    for (uint32_t i = 0; i < queueFamilyCount; i++)
+    {
+        vkGetPhysicalDeviceSurfaceSupportKHR(device.m_physDevice, i, m_surface,
+                                             &device.m_qSupportsPresent[i]);
+    }
+
+    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device.m_physDevice, m_surface,
+                                              &device.m_surfaceCaps);
+
+    uint32_t formatCount = 0;
+    vkGetPhysicalDeviceSurfaceFormatsKHR(device.m_physDevice, m_surface, &formatCount, nullptr);
+    if (formatCount != 0)
+    {
+        device.m_surfaceFormats.resize(formatCount);
+        vkGetPhysicalDeviceSurfaceFormatsKHR(device.m_physDevice, m_surface, &formatCount,
+                                             device.m_surfaceFormats.data());
+    }
+
+    uint32_t presentModeCount = 0;
+    vkGetPhysicalDeviceSurfacePresentModesKHR(device.m_physDevice, m_surface, &presentModeCount,
+                                              nullptr);
+    if (presentModeCount != 0)
+    {
+        device.m_presentModes.resize(presentModeCount);
+        vkGetPhysicalDeviceSurfacePresentModesKHR(device.m_physDevice, m_surface, &presentModeCount,
+                                                  device.m_presentModes.data());
+    }
+
+    vkGetPhysicalDeviceMemoryProperties(device.m_physDevice, &device.m_memProps);
+
+    return true;
+}
+
+VulkanRenderer::QueueFamilyIndices VulkanRenderer::findQueueFamilies(VkPhysicalDevice device)
+{
+    QueueFamilyIndices indices;
+
+    uint32_t queueFamilyCount = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, nullptr);
+    std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
+    vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.data());
+
+    int i = 0;
+    for (const auto& queueFamily : queueFamilies)
+    {
+        if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT)
+        {
+            indices.graphicsFamily = i;
+        }
+
+        VkBool32 presentSupport = false;
+        vkGetPhysicalDeviceSurfaceSupportKHR(device, i, m_surface, &presentSupport);
+        if (presentSupport)
+        {
+            indices.presentFamily = i;
+        }
+
+        if (indices.isComplete()) break;
+        i++;
+    }
+    return indices;
+}
+
+void VulkanRenderer::printDeviceDetails(const PhysicalDevice& device)
+{
+    LOG_INFO("--------------------------------------------------", "log");
+    LOG_INFO("Device Name: " + std::string(device.m_devProps.deviceName), "log");
+
+    std::string apiVersionStr =
+        std::to_string(VK_API_VERSION_MAJOR(device.m_devProps.apiVersion)) + "." +
+        std::to_string(VK_API_VERSION_MINOR(device.m_devProps.apiVersion)) + "." +
+        std::to_string(VK_API_VERSION_PATCH(device.m_devProps.apiVersion));
+    LOG_INFO("API Version: " + apiVersionStr, "log");
+
+    LOG_INFO("Num of family queues: " + std::to_string(device.m_qFamilyProps.size()), "log");
+    for (size_t i = 0; i < device.m_qFamilyProps.size(); i++)
+    {
+        const auto& queueFamily = device.m_qFamilyProps[i];
+        std::string flags       = "";
+        if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT)  flags += "GFX Yes, ";
+        else                                                 flags += "GFX No, ";
+        if (queueFamily.queueFlags & VK_QUEUE_COMPUTE_BIT)   flags += "Compute Yes, ";
+        else                                                 flags += "Compute No, ";
+        if (queueFamily.queueFlags & VK_QUEUE_TRANSFER_BIT)  flags += "Transfer Yes";
+        else                                                 flags += "Transfer No";
+
+        bool supportsPresent =
+            (i < device.m_qSupportsPresent.size()) && device.m_qSupportsPresent[i];
+        std::string presentStr = supportsPresent ? " [Supports Present]" : " [No Present Support]";
+
+        LOG_INFO("  Family " + std::to_string(i) + " Num queues: " +
+                     std::to_string(queueFamily.queueCount) + " -> " + flags + presentStr,
+                 "log");
+    }
+
+    LOG_INFO("Supported Surface Formats: " + std::to_string(device.m_surfaceFormats.size()), "log");
+
+    LOG_INFO("Num memory types: " + std::to_string(device.m_memProps.memoryTypeCount), "log");
+    for (uint32_t i = 0; i < device.m_memProps.memoryTypeCount; i++)
+    {
+        uint32_t              heapIndex = device.m_memProps.memoryTypes[i].heapIndex;
+        VkMemoryPropertyFlags props     = device.m_memProps.memoryTypes[i].propertyFlags;
+
+        std::string typeFlags = "";
+        if (props & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)  typeFlags += "DEVICE_LOCAL ";
+        if (props & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) typeFlags += "HOST_VISIBLE ";
+        if (props & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) typeFlags += "HOST_COHERENT ";
+        if (props & VK_MEMORY_PROPERTY_HOST_CACHED_BIT)   typeFlags += "HOST_CACHED ";
+
+        LOG_INFO("  " + std::to_string(i) + ": heap " + std::to_string(heapIndex) +
+                     " Flags: " + typeFlags,
+                 "log");
+    }
+
+    LOG_INFO("Num heap types: " + std::to_string(device.m_memProps.memoryHeapCount), "log");
+    for (uint32_t i = 0; i < device.m_memProps.memoryHeapCount; i++)
+    {
+        VkDeviceSize sizeInMB = device.m_memProps.memoryHeaps[i].size / (1024 * 1024);
+        std::string  heapType =
+            (device.m_memProps.memoryHeaps[i].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT)
+                ? "DEVICE_LOCAL"
+                : "HOST_SYSTEM";
+        LOG_INFO("  Heap " + std::to_string(i) + " Size: " + std::to_string(sizeInMB) + " MB [" +
+                     heapType + "]",
+                 "log");
+    }
+    LOG_INFO("--------------------------------------------------", "log");
 }
 
 }  // namespace Optikos

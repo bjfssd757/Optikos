@@ -40,6 +40,9 @@ class GLFWWindow : public IWindow
 
     /* used only for vulkan */
     std::vector<const char*> getVulkanExtensions() override;
+#ifdef OPTIKOS_BACKEND_VULKAN
+    void createVulkanSurface(VkInstance instance, VkSurfaceKHR* surface) override;
+#endif
 
     void* native_handle() override;
     void  poll_events() override;

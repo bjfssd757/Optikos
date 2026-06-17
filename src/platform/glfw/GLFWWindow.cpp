@@ -100,6 +100,18 @@ std::vector<const char*> GLFWWindow::getVulkanExtensions()
     return extensions;
 }
 
+#ifdef OPTIKOS_BACKEND_VULKAN
+void GLFWWindow::createVulkanSurface(VkInstance instance, VkSurfaceKHR* surface)
+{
+    VkResult result = glfwCreateWindowSurface(instance, m_window, nullptr, surface);
+
+    if (result != VK_SUCCESS)
+        LOG_ERROR("[createVulkanSurface] Error while creating surface", "log");
+
+    LOG_TRACE("[createVulkanSurface] Surface created", "log");
+}
+#endif
+
 void GLFWWindow::setRenderer(IRenderer* renderer)
 {
     m_renderer = renderer;
