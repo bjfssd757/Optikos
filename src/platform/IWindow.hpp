@@ -14,6 +14,10 @@
 #include <vulkan/vulkan.h>
 #endif
 
+#ifdef OPTIKOS_BACKEND_WEBGPU
+#include <webgpu/webgpu_cpp.h>
+#endif
+
 namespace Optikos
 {
 class IRenderer;
@@ -66,12 +70,21 @@ class IWindow
     }
 #endif
 
+#ifdef OPTIKOS_BACKEND_WEBGPU
+    virtual void createWebGPUSurface(const char* label, wgpu::Instance instance, wgpu::Surface* surface) = 0;
+#else
+    [[deprecated("WebGPU is not supported on this platform")]]
+    virtual void createWebGPUSurface(void* instance, void* surface)
+    {
+        // This is a blank fallback so the compiler stays happy
+    }
+#endif
+
     virtual void* native_handle()      = 0;
     virtual void  poll_events()        = 0;
     virtual bool  should_close() const = 0;
     virtual int   getHeight() const    = 0;
     virtual int   getWidth() const     = 0;
-    virtual GLFWwindow* getGLFWWindow() const { return nullptr; }
 
 #ifdef __linux__
     virtual bool isX11Active() const = 0;

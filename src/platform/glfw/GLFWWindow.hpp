@@ -44,10 +44,9 @@ class GLFWWindow : public IWindow
     void createVulkanSurface(VkInstance instance, VkSurfaceKHR* surface) override;
 #endif
 
-    GLFWwindow* getGLFWWindow() const override
-    {
-        return m_window;
-    }
+#ifdef OPTIKOS_BACKEND_WEBGPU
+    virtual void createWebGPUSurface(const char* label, wgpu::Instance instance, wgpu::Surface* surface) override;
+#endif
 
     void* native_handle() override;
     void  poll_events() override;

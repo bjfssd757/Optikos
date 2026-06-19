@@ -4,8 +4,6 @@
 #include <webgpu/webgpu.h>
 #include <webgpu/webgpu_cpp.h>
 
-#include <iostream>
-#include <ostream>
 #include <shader/WGSL/WGSLShader.hpp>
 #include <utility>
 
@@ -522,40 +520,7 @@ void WebGPURenderer::createInstance()
 
 void WebGPURenderer::createSurface()
 {
-    wgpu::SurfaceDescriptor surfaceDesc{};
-    surfaceDesc.label = APP_NAME;
-
-#if defined(_WIN32)
-    wgpu::SurfaceSourceWindowsHWND winDesc{};
-    winDesc.sType           = wgpu::SType::SurfaceSourceWindowsHWND;
-    winDesc.hwnd            = glfwGetWin32Window(m_window->getGLFWWindow());
-    winDesc.hinstance       = GetModuleHandle(nullptr);
-    surfaceDesc.nextInChain = &winDesc;
-#elif defined(__APPLE__)
-    wgpu::SurfaceSourceMetalLayer macDesc{};
-    macDesc.sType           = wgpu::SType::SurfaceSourceMetalLayer;
-    macDesc.layer           = getMetalLayerFromGLFW(glfwGetCocoaWindow(m_window->getGLFWWindow()));
-    surfaceDesc.nextInChain = &macDesc;
-#else
-    if (m_window->isX11Active())
-    {
-        wgpu::SurfaceSourceXlibWindow x11Desc{};
-        x11Desc.sType           = wgpu::SType::SurfaceSourceXlibWindow;
-        x11Desc.display         = glfwGetX11Display();
-        x11Desc.window          = glfwGetX11Window(m_window->getGLFWWindow());
-        surfaceDesc.nextInChain = &x11Desc;
-    }
-    else
-    {
-        wgpu::SurfaceSourceWaylandWindow waylandDesc{};
-        waylandDesc.sType       = wgpu::SType::SurfaceSourceWaylandWindow;
-        waylandDesc.display     = glfwGetWaylandDisplay();
-        waylandDesc.window      = glfwGetWaylandWindow(m_window->getGLFWWindow());
-        surfaceDesc.nextInChain = &waylandDesc;
-    }
-#endif
-
-    m_surface = m_instance.CreateSurface(&surfaceDesc);
+    m_window->createWebGPUSurface(APP_NAME, m_instance, &m_surface);
 }
 
 void WebGPURenderer::createAdapter()
