@@ -1,6 +1,7 @@
 #ifndef OPENGLRENDERER_H
 #define OPENGLRENDERER_H
 
+#include <glad/glad.h>
 #include <iostream>
 
 #include "platform/IWindow.hpp"
@@ -11,7 +12,6 @@
 
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
-#include <glad/glad.h>
 
 /* __debugbreak depends on MSVC add #ifdef for MSVC */
 #define call(x) \

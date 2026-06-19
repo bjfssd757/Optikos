@@ -1,16 +1,22 @@
-#include "optikos.hpp"
-
-#ifdef OPTIKOS_PLATFORM_GLWF
-#include "platform/glfw/GLFWWindow.hpp"
-#endif
-
 #ifdef OPTIKOS_BACKEND_OPENGL
 #include "render/opengl/OpenGLRenderer.hpp"
 #include "shader/GLSL/GLShader.hpp"
 #endif
 
+#include "optikos.hpp"
+#include <memory>
+
+#ifdef OPTIKOS_PLATFORM_GLWF
+#include "platform/glfw/GLFWWindow.hpp"
+#endif
+
 #ifdef OPTIKOS_BACKEND_VULKAN
 #include "render/vulkan/VulkanRenderer.hpp"
+#endif
+
+#ifdef OPTIKOS_BACKEND_WEBGPU
+#include "render/webgpu/WebGPURenderer.hpp"
+#include "shader/WGSL/WGSLShader.hpp"
 #endif
 
 #ifdef OPTIKOS_INPUT_GLWF
@@ -43,6 +49,11 @@ Optikos::Optikos(std::string_view title, unsigned int width, unsigned int height
 #ifdef OPTIKOS_BACKEND_OPENGL
     auto shader = std::make_unique<GLShader>();
     m_renderer  = std::make_unique<OpenGLRenderer>(m_window.get(), std::move(shader));
+#endif
+
+#ifdef OPTIKOS_BACKEND_WEBGPU
+    auto shader = std::make_unique<WGSLShader>();
+    m_renderer = std::make_unique<WebGPURenderer>(m_window.get(), std::move(shader));
 #endif
 
 #ifdef OPTIKOS_BACKEND_VULKAN

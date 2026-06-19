@@ -8,6 +8,7 @@
 
 #include "ui/UISystem.hpp"
 #include "utilities/color.hpp"
+#include <GLFW/glfw3.h>
 
 #ifdef OPTIKOS_BACKEND_VULKAN
 #include <vulkan/vulkan.h>
@@ -23,6 +24,7 @@ enum class GraphicsAPI
     None,
     OpenGL,
     Vulkan,
+    WebGPU,
     // DirectX12
 };
 
@@ -69,6 +71,12 @@ class IWindow
     virtual bool  should_close() const = 0;
     virtual int   getHeight() const    = 0;
     virtual int   getWidth() const     = 0;
+    virtual GLFWwindow* getGLFWWindow() const { return nullptr; }
+
+#ifdef __linux__
+    virtual bool isX11Active() const = 0;
+#endif
+
 
    private:
 };

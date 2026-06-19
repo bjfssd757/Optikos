@@ -112,6 +112,19 @@ void GLFWWindow::createVulkanSurface(VkInstance instance, VkSurfaceKHR* surface)
 }
 #endif
 
+#ifdef __linux__
+bool GLFWWindow::isX11Active()
+{
+#ifdef GLFW_EXPOSE_NATIVE_WAYLAND
+    return false;
+#endif
+
+#ifdef GLFW_EXPOSE_NATIVE_X11
+    return true;
+#endif
+}
+#endif
+
 void GLFWWindow::setRenderer(IRenderer* renderer)
 {
     m_renderer = renderer;
